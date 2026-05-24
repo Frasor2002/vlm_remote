@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import numpy as np
 
-DATA_PATH = os.path.join("mnt", "cimec-storage6", "users", "francesco.sorrentino","vlm_dataset")
+DATA_PATH = os.path.join("mnt", "cimec-storage6", "users", "francesco.sorrentino","data")
 
 
 def convert_to_heatmap(sal_tensor: torch.Tensor, outlier_perc: float = 1.0) -> Image.Image:
