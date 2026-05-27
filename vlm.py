@@ -7,6 +7,7 @@ import torch
 from dotenv import load_dotenv
 from utils import login_to_hub
 
+
 class VLMLoader:
   def __init__(self, model_id: str, prompt_path: str):
     self.model_id = model_id
@@ -15,37 +16,43 @@ class VLMLoader:
     self.processor = AutoProcessor.from_pretrained(model_id)
     self.model = AutoModelForImageTextToText.from_pretrained(
       model_id,
-      dtype="auto",
+      torch_dtype="auto", 
       device_map="auto"
     )
-  
-  def _load_prompt(self) -> dict:
+    # Load both prompts into a dictionary
+    self.prompts = self._load_prompts()
+
+  def _load_prompts(self) -> dict:
     if not os.path.exists(self.prompt_path):
       raise FileNotFoundError(f"Prompt file not found at: {self.prompt_path}")
             
     with open(self.prompt_path, "r", encoding="utf-8") as file:
       prompt_data = yaml.safe_load(file)
-            
-    return prompt_data["prompt"]
 
+    # Ensure these keys match your prompt.yaml exactly
+    return prompt_data
 
-  def detect_confounders(self, img: PIL.Image, saliency: PIL.Image, pred: str, label: str):
-    prompt = self._load_prompt()
-    prompt = prompt.replace("{prediction}", pred)
-    prompt = prompt.replace("{label}", label)
-    img_len = str(img.size[0])
-    prompt = prompt.replace("{img_len}", img_len)
+  # Added 'right_reasons' boolean flag here
+  def detect_confounders(self, img: PIL.Image, saliency: PIL.Image, pred: str, label: str, rr: bool = False):
+    
+    if rr: prompt = self.prompts["prompt_rr"]
+    else: prompt = self.prompts["prompt_wr"]
+    
+    prompt = prompt.replace("{prediction}", str(pred))
+    prompt = prompt.replace("{label}", str(label))
+    prompt = prompt.replace("{img_len}", str(img.width))
 
     messages = [
       {
         "role": "user",
         "content": [
           {"type": "image", "image": img},
-          {"type": "image", "image": img},
+          {"type": "image", "image": saliency}, 
           {"type": "text", "text": prompt},
         ]
       },
     ]
+    
     inputs = self.processor.apply_chat_template(
       messages, 
       add_generation_prompt=True, 
@@ -57,7 +64,7 @@ class VLMLoader:
     with torch.no_grad():
       output = self.model.generate(
         **inputs, 
-        max_new_tokens=200
+        max_new_tokens=512 
       )
     
     prompt_length = inputs["input_ids"].shape[1]

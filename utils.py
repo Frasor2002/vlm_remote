@@ -5,11 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import json
 import re
-from PIL import Image
 
 STORAGE_PATH = os.path.join("mnt", "cimec-storage6", "users", "francesco.sorrentino")
 LOG_PATH = os.path.join(STORAGE_PATH,"text_log")
-LOG_MASKS_PATH = os.path.join(STORAGE_PATH,"img_log")
+LOG_OUTPUT_PATH = os.path.join(LOG_PATH,"model_output")
+LOG_METRICS_PATH = os.path.join(LOG_PATH,"metrics")
+LOG_MASKS_PATH = os.path.join(LOG_PATH,"img_log")
 
 
 def parse_bboxes(output_text: str):
@@ -30,7 +31,7 @@ def parse_bboxes(output_text: str):
     print("Parsing failed:", e)
     return []
 
-def bboxes_to_mask(bboxes, image_shape, normalize=True):
+def bboxes_to_mask(bboxes, image_shape, normalize=False):
   H, W = image_shape
   mask = torch.zeros((H, W), dtype=torch.uint8)
 
@@ -51,16 +52,25 @@ def bboxes_to_mask(bboxes, image_shape, normalize=True):
 
   return mask
 
-def log_vlm_output(dataset_name, sample_id, output_text,):
-  log_filepath = os.path.join(LOG_PATH, "vlm_out.txt") 
+def log_vlm_output(model, dataset_name, sample_id, output_text):
+  os.makedirs(LOG_OUTPUT_PATH, exist_ok=True)
+  log_filepath = os.path.join(LOG_OUTPUT_PATH, f"{model}_{dataset_name}_vlm_out.txt") 
   with open(log_filepath, "a", encoding="utf-8") as f:
-    f.write(f"=== Dataset: {dataset_name} | Sample ID: {sample_id} ===\n")
+    f.write(f"=== Sample ID: {sample_id} ===\n")
     f.write(f"{output_text}\n")
+    f.write("-" * 50 + "\n\n")
+
+def log_metrics_output(model, dataset_name, sample_id, metrics_text):
+  os.makedirs(LOG_METRICS_PATH, exist_ok=True)
+  log_filepath = os.path.join(LOG_METRICS_PATH, f"{model}_{dataset_name}_metrics.txt") 
+  with open(log_filepath, "a", encoding="utf-8") as f:
+    f.write(f"=== Sample ID: {sample_id} ===\n")
+    f.write(f"{metrics_text}\n")
     f.write("-" * 50 + "\n\n")
 
 def save_visualization(image, saliency, pred_mask, gt_mask, save_path, sample_id="", class_label=""):
   # Ensure the directory exists
-  os.makedirs(LOG_MASKS_PATH, exist_ok=True)
+  os.makedirs(LOG_PATH,"viz", exist_ok=True)
     
   fig, axes = plt.subplots(1, 4, figsize=(20, 5))
     
@@ -133,6 +143,50 @@ def evaluate_masks(y_true: torch.Tensor , y_pred: torch.Tensor) -> dict:
     "Accuracy": accuracy
   }
 
+def evaluate_weighted_masks(y_true: torch.Tensor, y_pred: torch.Tensor, saliency: torch.Tensor) -> dict:
+  y_true_bool = y_true.bool()
+  y_pred_bool = y_pred.bool()
+
+  sal_abs = torch.abs(saliency)
+  
+  if sal_abs.ndim == 3:
+    sal_abs = torch.sum(sal_abs, dim=0)
+
+  weighted_TP = (y_true_bool & y_pred_bool).float() * sal_abs
+  weighted_FP = (~y_true_bool & y_pred_bool).float() * sal_abs
+  weighted_FN = (y_true_bool & ~y_pred_bool).float() * sal_abs
+
+  sum_TP = weighted_TP.sum().item()
+  sum_FP = weighted_FP.sum().item()
+  sum_FN = weighted_FN.sum().item()
+
+  w_iou = sum_TP / (sum_TP + sum_FP + sum_FN) if (sum_TP + sum_FP + sum_FN) != 0 else 0.0
+  w_precision = sum_TP / (sum_TP + sum_FP) if (sum_TP + sum_FP) != 0 else 0.0
+  w_recall = sum_TP / (sum_TP + sum_FN) if (sum_TP + sum_FN) != 0 else 0.0
+
+  return {
+    "Weighted_IoU": w_iou,
+    "Weighted_Precision": w_precision,
+    "Weighted_Recall": w_recall
+  }
+
+def evaluate_plausibility(right_mask: torch.Tensor, wrong_mask: torch.Tensor) -> dict:
+  right = right_mask.bool()
+  wrong = wrong_mask.bool()
+
+  intersection = (right & wrong).sum().item()
+  
+  union = (right | wrong).sum().item()
+
+  overlap_ratio = intersection / union if union != 0 else 0.0
+
+  plausibility = 1.0 - overlap_ratio
+
+  return {
+    "Plausibility_Score": plausibility,
+    "Contradicting_Pixels": intersection,
+    "Overlap_Ratio": overlap_ratio
+  }
 
 def login_to_hub() -> None:
   """Login to hugging face hub to load models."""
