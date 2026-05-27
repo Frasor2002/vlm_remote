@@ -70,7 +70,7 @@ def log_metrics_output(model, dataset_name, sample_id, metrics_text):
 
 def save_visualization(image, saliency, pred_mask, gt_mask, save_path, sample_id="", class_label=""):
   # Ensure the directory exists
-  os.makedirs(LOG_PATH,"viz", exist_ok=True)
+  os.makedirs(LOG_MASKS_PATH, exist_ok=True)
     
   fig, axes = plt.subplots(1, 4, figsize=(20, 5))
     
@@ -115,7 +115,7 @@ def save_visualization(image, saliency, pred_mask, gt_mask, save_path, sample_id
     plt.suptitle(f"Sample: {sample_id} | Class: {class_label}", fontsize=16)
     
   plt.tight_layout()
-  path = os.path.join(LOG_PATH, save_path)
+  path = os.path.join(LOG_MASKS_PATH, save_path)
   plt.savefig(path)
   plt.close(fig)
 
