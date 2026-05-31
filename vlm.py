@@ -10,15 +10,16 @@ from utils import login_to_hub
 
 class VLMLoader:
   def __init__(self, model_id: str, prompt_path: str):
+    cache_dir = os.getenv("HF_HUB_CACHE")
     self.model_id = model_id
     self.prompt_path = prompt_path
 
-    self.processor = AutoProcessor.from_pretrained(model_id)
+    self.processor = AutoProcessor.from_pretrained(model_id, cache_dir=cache_dir)
     self.model = AutoModelForImageTextToText.from_pretrained(
       model_id,
       torch_dtype="auto", 
-      device_map="auto"
-    )
+      device_map="auto",
+      cache_dir=cache_dir)
     # Load both prompts into a dictionary
     self.prompts = self._load_prompts()
 
@@ -32,7 +33,6 @@ class VLMLoader:
     # Ensure these keys match your prompt.yaml exactly
     return prompt_data
 
-  # Added 'right_reasons' boolean flag here
   def detect_confounders(self, img: PIL.Image, saliency: PIL.Image, pred: str, label: str, rr: bool = False):
     
     if rr: prompt = self.prompts["prompt_rr"]
