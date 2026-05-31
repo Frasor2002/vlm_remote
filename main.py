@@ -18,6 +18,7 @@ def main():
 
   parser.add_argument(
     "-m",
+    "--model",
     type=str,
     default="qwen_vl",
     choices=AVAILABLE_MODELS.keys(),
